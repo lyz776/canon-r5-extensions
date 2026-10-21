@@ -1,0 +1,82 @@
+diff --git a/Makefile b/Makefile
+index db1d534..77d8006 100644
+--- a/Makefile
++++ b/Makefile
+@@ -491,7 +491,10 @@ $(TARGET_DIRS_RULES):
+ 	$(call quiet-command,$(MAKE) $(SUBDIR_MAKEFLAGS) -C $(dir $@) V="$(V)" TARGET_DIR="$(dir $@)" $(notdir $@),)
+ 
+ DTC_MAKE_ARGS=-I$(SRC_PATH)/dtc VPATH=$(SRC_PATH)/dtc -C dtc V="$(V)" LIBFDT_srcdir=$(SRC_PATH)/dtc/libfdt
+-DTC_CFLAGS=$(CFLAGS) $(QEMU_CFLAGS) -rdynamic -ggdb3
++DTC_CFLAGS=$(CFLAGS) $(QEMU_CFLAGS) -ggdb3
++ifneq ($(CONFIG_WIN32),y)
++DTC_CFLAGS += -rdynamic
++endif
+ DTC_CPPFLAGS=-I$(BUILD_DIR)/dtc -I$(SRC_PATH)/dtc -I$(SRC_PATH)/dtc/libfdt
+ 
+ .PHONY: dtc/all
+diff --git a/disas/arm-a64.cc b/disas/arm-a64.cc
+index 9fa779e..981a39c 100644
+--- a/disas/arm-a64.cc
++++ b/disas/arm-a64.cc
+@@ -17,8 +17,9 @@
+  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  */
+ 
+-extern "C" {
+ #include "qemu/osdep.h"
++
++extern "C" {
+ #include "disas/dis-asm.h"
+ }
+ 
+diff --git a/hw/eos/dbi/logging.c b/hw/eos/dbi/logging.c
+index 2529d0e..e8d267b 100644
+--- a/hw/eos/dbi/logging.c
++++ b/hw/eos/dbi/logging.c
+@@ -1942,12 +1942,12 @@ void eos_logging_init(void)
+     if (qemu_loglevel_mask(EOS_LOG_MEM))
+     {
+         int mem_access_mode =
+-            (qemu_loglevel_mask(EOS_LOG_MEM_R) ? PROT_READ : 0) |
+-            (qemu_loglevel_mask(EOS_LOG_MEM_W) ? PROT_WRITE : 0);
++            (qemu_loglevel_mask(EOS_LOG_MEM_R) ? PAGE_READ : 0) |
++            (qemu_loglevel_mask(EOS_LOG_MEM_W) ? PAGE_WRITE : 0);
+ 
+         fprintf(stderr, "[EOS] enabling memory access logging (%s%s).\n",
+-            (mem_access_mode & PROT_READ) ? "R" : "",
+-            (mem_access_mode & PROT_WRITE) ? "W" : ""
++            (mem_access_mode & PAGE_READ) ? "R" : "",
++            (mem_access_mode & PAGE_WRITE) ? "W" : ""
+         );
+ 
+         memory_set_access_logging_cb(eos_log_mem, mem_access_mode);
+diff --git a/include/exec/memory.h b/include/exec/memory.h
+index 9f1828b..121c610 100644
+--- a/include/exec/memory.h
++++ b/include/exec/memory.h
+@@ -2251,7 +2251,7 @@ static inline MemOp devend_memop(enum device_endian end)
+  * 
+  * @mem_log_cb: callback to be called when memory access takes place
+  * @opaque: argument passed to mem_log_cb
+- * @access_mode: bit field (PROT_READ, PROT_WRITE); fixme - better constants? define new ones?
++ * @access_mode: bit field (PAGE_READ, PAGE_WRITE) from exec/cpu-all.h
+  */
+ void memory_set_access_logging_cb(
+     void (*mem_log_cb)(hwaddr addr, uint64_t value, unsigned size, int is_write),
+diff --git a/target/arm/translate.c b/target/arm/translate.c
+index e4c0094..73326fa 100644
+--- a/target/arm/translate.c
++++ b/target/arm/translate.c
+@@ -976,10 +976,10 @@ void memory_set_access_logging_cb(
+     void (*mem_log_cb)(hwaddr addr, uint64_t value, unsigned size, int is_write),
+     int access_mode)
+ {
+-    if (access_mode & PROT_READ) {
++    if (access_mode & PAGE_READ) {
+         mem_log.read_cb = mem_log_cb;
+     }
+-    if (access_mode & PROT_WRITE) {
++    if (access_mode & PAGE_WRITE) {
+         mem_log.write_cb = mem_log_cb;
+     }
+ }

@@ -11,3 +11,8 @@ local/
 *.ROM
 *.zip
 *.ZIP
+*.img
+*.IMG
+*.exe
+*.dll
+build/
