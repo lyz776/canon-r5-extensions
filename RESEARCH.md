@@ -1,12 +1,12 @@
 # R5 一代：依据与首次交付风险记录
 
-调查日期：2026-10-21。用户机身的准确固件版本未知。以下“源码已确认”表示在指定提交中读到了相应实现或注释，不表示已经在我们的 R5 上复现。
+调查日期：2026-10-21。机主于当日报告机身固件版本为 **2.0.0**；尚未取得并独立核实对应固件文件或 ROM。以下“源码已确认”表示在指定提交中读到了相应实现或注释，不表示已经在我们的 R5 上复现。
 
 ## 已检查的 Magic Lantern 基线
 
 仓库：[reticulatedpines/magiclantern_simplified](https://github.com/reticulatedpines/magiclantern_simplified)。固定提交：`142472e95054d73640f50789ac0fd66325499d82`，上游提交日期 2026-10-04。我们只读取了源码，没有修改、编译或发布上游二进制。
 
-1. **现有平台目录是 R5.152。** [Makefile](https://github.com/reticulatedpines/magiclantern_simplified/blob/142472e95054d73640f50789ac0fd66325499d82/platform/R5.152/Makefile#L1) 明确给出 `FW_VERSION = 152`；[stubs.S](https://github.com/reticulatedpines/magiclantern_simplified/blob/142472e95054d73640f50789ac0fd66325499d82/platform/R5.152/stubs.S#L1) 标明地址来自 R5 1.5.2。这些地址不能平移到未知版本。
+1. **现有平台目录是 R5.152。** [Makefile](https://github.com/reticulatedpines/magiclantern_simplified/blob/142472e95054d73640f50789ac0fd66325499d82/platform/R5.152/Makefile#L1) 明确给出 `FW_VERSION = 152`；[stubs.S](https://github.com/reticulatedpines/magiclantern_simplified/blob/142472e95054d73640f50789ac0fd66325499d82/platform/R5.152/stubs.S#L1) 标明地址来自 R5 1.5.2。这些地址不能直接用于目标版本 2.0.0。
 2. **有平台支持不等于具有三个目标功能。** [features.h](https://github.com/reticulatedpines/magiclantern_simplified/blob/142472e95054d73640f50789ac0fd66325499d82/platform/R5.152/features.h#L1) 主要启用 RGBA 合成、任务/CPU/GUI 等调试功能，并禁用属性写入、崩溃日志和自动 ROM 备份。[function_overrides.c](https://github.com/reticulatedpines/magiclantern_simplified/blob/142472e95054d73640f50789ac0fd66325499d82/platform/R5.152/function_overrides.c#L137) 将一批 EDMAC/寄存器接口实现为占位空函数，注释直接标为临时错误实现。因此不能把这些名字的存在当作视频处理路径已经可用。
 3. **有明确的崩溃记录。** [internals.h](https://github.com/reticulatedpines/magiclantern_simplified/blob/142472e95054d73640f50789ac0fd66325499d82/platform/R5.152/internals.h#L11) 说明 SRM 分配即使只请求一个缓冲区也会崩溃。[stubs.S](https://github.com/reticulatedpines/magiclantern_simplified/blob/142472e95054d73640f50789ac0fd66325499d82/platform/R5.152/stubs.S#L163) 解释 DIGIC X 的相关旧入口为触发断言的占位函数。
 4. **上游自身限制属性写入。** [property_whitelist.h](https://github.com/reticulatedpines/magiclantern_simplified/blob/142472e95054d73640f50789ac0fd66325499d82/platform/R5.152/property_whitelist.h#L5) 提醒错误的属性写入可能导致变砖，写入白名单为空；部分属性连订阅处理器都被禁用。读取或订阅相机内部状态也不应笼统视作无副作用。
@@ -22,7 +22,7 @@
 
 [src/bootflags.c](https://github.com/reticulatedpines/magiclantern_simplified/blob/142472e95054d73640f50789ac0fd66325499d82/src/bootflags.c#L108) 还会直接写卡的引导扇区；所检查的设备选择分支没有 R5 专门处理，而 R5 的 [sd_device 声明](https://github.com/reticulatedpines/magiclantern_simplified/blob/142472e95054d73640f50789ac0fd66325499d82/platform/R5.152/stubs.S#L170) 仍是零地址占位。不能将通用代码直接用于这台相机。
 
-对未知版本，当前没有已验证的代码执行入口、备份还原方案、启动标志回退方案或断电恢复方案。未进行降级，也未要求机主运行任何机内程序。
+针对目标版本 2.0.0，本项目尚未验证代码执行入口、备份还原方案、启动标志回退方案或断电恢复方案。未进行降级，也未要求机主运行任何机内程序。
 
 ## 三项功能的最小调查方向
 
@@ -70,4 +70,4 @@ Canon [R5 与 R5 C 比较](https://www.canon-europe.com/pro/stories/eos-r5-c-vs-
 
 ## 下一阶段所需的实际输入
 
-先确认相机菜单显示的完整固件版本，以及用于分析的对应 Canon 官方文件来源；不需要机身序列号。用本工具固定文件字节身份后，再验证该版本的格式与映射。除非获得足够证据，否则保持未知地址、未知属性和未知恢复路径不进入真机实验。该条件是针对具体缺失事实的技术边界，不是要求再次授权整个工程。
+机主已报告固件版本 2.0.0，下一步核对用于分析的对应 Canon 官方文件来源；不需要机身序列号。用本工具固定文件字节身份后，再验证该版本的格式与映射。除非获得足够证据，否则保持未知地址、未知属性和未知恢复路径不进入真机实验。该条件是针对具体缺失事实的技术边界，不是要求再次授权整个工程。

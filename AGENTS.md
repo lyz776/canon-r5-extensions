@@ -1,6 +1,6 @@
 # Engineering constraints
 
-- Target Canon EOS R5 Mark I. Its owner's installed firmware is still unknown.
+- Target Canon EOS R5 Mark I, installed firmware 2.0.0 as reported by the owner on 2026-10-21. The corresponding firmware file and ROM identity have not been independently verified.
 - Prefer the smallest evidence-backed change. Refactor our own code when it simplifies the work; do not build a generic patch framework in advance.
 - Link version-pinned sources for hardware/firmware assumptions. Do not treat another model's address, a filename, a header guess, or a matching hash as compatibility evidence.
 - Current scope is offline inspection and QEMU-EOS research. Synthetic emulator-only test programs are allowed; they must contain no Canon bytes and must never be packaged as camera install files. No camera installer, USB/PTP command, physical boot flag/NVRAM write, or camera register patch belongs in this delivery.
