@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.venv/
+# Keep local firmware, camera dumps and generated reports out of Git.
+local/
+*.fir
+*.FIR
+*.bin
+*.BIN
+*.rom
+*.ROM
+*.zip
+*.ZIP
