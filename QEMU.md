@@ -51,7 +51,7 @@ bash qemu/build_msys2.sh ../qemu-eos ../qemu-eos-build
 
 若混用 Git for Windows 和 MSYS2 Git，需保持主仓库及子模块的 `core.autocrlf` 一致。本次 Windows checkout 使用 `true`；不同配置会把换行符误报为源码改动，构建脚本会拒绝继续。
 
-Windows 补丁遵循 QEMU 的 GPL-2.0-or-later 许可证，属于上游宿主构建兼容修正；本仓库的 MIT 许可不替代 QEMU 许可。VNC 编译支持保留，但合成测试不会开启监听。此版本关闭了动态指令插件，不能直接套用依赖 `libmagiclantern.so` 的上游启动脚本；这不等于已验证所有上游调试功能。
+累计补丁 `qemu/windows-build.patch` 包含宿主构建兼容修正及下述内存日志修复，遵循 QEMU 的 GPL-2.0-or-later 许可证；本仓库的 MIT 许可不替代 QEMU 许可。VNC 编译支持保留，但合成测试不会开启监听。此版本关闭了动态指令插件，不能直接套用依赖 `libmagiclantern.so` 的上游启动脚本；这不等于已验证所有上游调试功能。
 
 补丁依据：
 
@@ -61,7 +61,9 @@ Windows 补丁遵循 QEMU 的 GPL-2.0-or-later 许可证，属于上游宿主构
 | 新版 GLib 的 Windows 头文件包含 C++ 模板，不能放在 `extern "C"` 中 | 将 `qemu/osdep.h` 移到该块外 |
 | Windows 没有 POSIX `PROT_READ/PROT_WRITE` | 内存日志发送端和接收端统一使用 QEMU 自有 `PAGE_READ/PAGE_WRITE`；同步接口注释 |
 
-没有修改 R5 的内存映射、启动标志、外设占位返回值或指令执行结果。构建仍有上游警告；编译成功不等于完成源码缺陷审计。
+日志修复把回调从旧包装移到共用的 32 位数据访问入口，并移除旧包装的回调，避免重复记录。读写完成后才调用日志；发生 MMU 异常则不会执行回调。同时修正 16 位值掩码 `0xFFFFF` 为 `0xFFFF`，移除写入完成后错误标为“旧值”的额外内存读取。
+
+没有修改 R5 的内存映射、启动标志或外设占位返回值。构建仍有上游警告；编译成功不等于完成源码缺陷审计。
 
 ## 验证范围
 
@@ -75,33 +77,44 @@ Windows 补丁遵循 QEMU 的 GPL-2.0-or-later 许可证，属于上游宿主构
 
 ### 运行合成测试
 
-使用 Python **3.11+**（本次为 3.12.14）。在 Windows PowerShell 中运行；自行构建时，先将 MSYS2 的 `mingw64/bin` 加入当前进程的 PATH，以找到 DLL。交付目录已附所需 DLL，无需该步骤。
+使用 Python **3.11+**。基础测试只需已构建的 QEMU；完整日志回归还需要 GNU ARM binutils。本次使用 MSYS2 UCRT64 的 binutils 2.47，仅用于汇编自写测试。模拟器本身仍由 MINGW64 构建。
 
-```powershell
-python -B qemu/smoke_r5.py ../qemu-eos-build/arm-softmmu/qemu-system-arm.exe --work-dir ../qemu-smoke
-# 额外检查 RAM 日志完整性；本次固定版本的这项检查失败，退出码为 1。
-python -B qemu/smoke_r5.py ../qemu-eos-build/arm-softmmu/qemu-system-arm.exe --work-dir ../qemu-smoke --probe-memory-log
+```sh
+pacman -S --needed mingw-w64-ucrt-x86_64-arm-none-eabi-binutils
 ```
 
-默认运行三项基础测试，全部通过才返回 0；任何检查失败返回 1。可选日志检查也执行严格断言，没有将已知失败当作通过。临时文件自动清理，不生成供相机使用的安装文件。
+在 PowerShell 中从仓库根目录运行，替换实际路径：
 
-### 本次结果（2026-10-21）
+```powershell
+# 三项基础测试，不需要汇编器。
+python -B qemu/smoke_r5.py "path/to/qemu-system-arm.exe" --work-dir ./local/qemu-smoke
+# 完整日志回归。工具已在 PATH 时可省略 --binutils-prefix。
+python -B qemu/smoke_r5.py "path/to/qemu-system-arm.exe" --work-dir ./local/qemu-smoke --probe-memory-log --binutils-prefix "C:/path/to/msys64/ucrt64/bin/arm-none-eabi-"
+# 额外探测已知的上游对齐检查缺口；目前返回 1。
+python -B qemu/smoke_r5.py "path/to/qemu-system-arm.exe" --work-dir ./local/qemu-smoke --probe-alignment --binutils-prefix "C:/path/to/msys64/ucrt64/bin/arm-none-eabi-"
+```
 
-Windows 可执行程序报告 QEMU 4.2.1，`-machine help` 列出 `R5 / Canon EOS R5`。合成测试结果：
+自行构建时需让 QEMU 找到 MINGW64 DLL；交付目录已附运行库。binutils 使用自己的 UCRT64 运行库，勿用它们替换 QEMU 附带的 DLL。
 
-| 检查 | 实际结果 |
+测试生成普通临时文件，不使用 Canon ROM。`memory_log.S` 包含可审查的 ARM/Thumb 汇编；每次回归重新汇编，不提交二进制测试 ROM。`MODE=0/1/2` 分别选择 ARM、Thumb-16、Thumb-32 标量访问；`FAULT=1/2` 测试未映射页的读/写异常，`FAULT=3/4` 探测对齐异常。MMU 页表及地址仅属于合成测试。
+
+### 日志修复验证（2026-10-21）
+
+| 检查 | 结果 |
 | --- | --- |
-| ARM 指令及 RAM 存取，打印完成标记并退出 | 通过，退出 0 |
-| 故意比较错误值 | 通过，正确观察到退出 1，且无完成标记 |
-| 打印标记后死循环 | 通过，宿主在 5 秒上限后终止子进程；不代表模拟了相机看门狗 |
-| ROM 与虚拟卡输入字节不变 | 所有用例前后 SHA-256 一致；未测试虚拟卡写操作 |
-| `-d ramr` / `-d ramw` 输出测试地址访问记录 | **两项均失败**，不能依赖这些日志判断没有越界或没有写入 |
+| 基础 ARM/RAM、故意错误退出、宿主死循环超时 | 3/3 通过 |
+| 三种指令编码 × 关闭日志/只读/只写/读写 | 12/12 通过 |
+| 三种编码 × MMU 未映射页读/写异常 | 6/6 通过；处理器报告预期异常和地址，失败访问没有完成记录 |
+| 同一套 21 项回归运行于修复前二进制 | 6 通过、15 失败，证明测试可以检出原缺陷 |
+| 额外 SCTLR.A 对齐异常探测 | 6/6 失败：开启对齐检查后非对齐访问仍完成，作为已知缺口保留 |
 
-日志缺口有源码依据：[新解码路径](https://github.com/reticulatedpines/qemu-eos/blob/4b667a1d3c08ab7a55835d15ddbd884fa754946d/target/arm/translate.c#L8870)直接调用 `gen_aa32_ld_i32/st_i32`，没有经过[附带回调的旧包装](https://github.com/reticulatedpines/qemu-eos/blob/4b667a1d3c08ab7a55835d15ddbd884fa754946d/target/arm/translate.c#L1029)。本次没有扩展修改指令翻译器来修复它。日志模式初始化成功只能说明选项被识别，不能证明逐次访问已被记录。
+正常访问逐条核对 **地址、读写方向、值、宽度、顺序和次数**，包括 8/16/32 位访问、带符号半字、立即数/寄存器偏移、目标与基址重合以及 LDM/STM 多寄存器访问。测试程序还会自行比较加载值；只读/只写模式不得出现另一方向记录。检查的是完整测试轨迹，不能用一个成功字符串替代。
 
-原有只读文件指纹工具的 12 项单元测试也通过。未运行上游全套相机固件回归测试，因为没有所需 ROM 输入。本交付不是完整的 R5 虚拟机，更不是防变砖认证环境。
+修复依据：[新解码路径](https://github.com/reticulatedpines/qemu-eos/blob/4b667a1d3c08ab7a55835d15ddbd884fa754946d/target/arm/translate.c#L8870)直接调用共用入口，却绕过了[旧包装中的日志回调](https://github.com/reticulatedpines/qemu-eos/blob/4b667a1d3c08ab7a55835d15ddbd884fa754946d/target/arm/translate.c#L1029)。本次在共用入口补齐回调，并移除旧包装调用；未另造第二套跟踪机制。
 
-交付构建脚本已在现有构建目录完整运行成功；补丁在固定上游原文件副本上通过应用检查，并逐文件复现五处文件差异。脚本也正确拒绝了错误的源码提交。Windows 交付程序附带所需 DLL，在 PATH 仅含系统目录且 EOS 继承路径被故意设错的环境下，重新得到上述基础通过、日志失败的结果。
+**剩余限制：** SCTLR.A 对齐检查尚不可靠；64 位、VFP/NEON、独占/原子指令、DMA、MMIO 和非恒等 MMU 映射不在本次验收范围，部分上游路径仍会漏记或触发断言。日志中的 PC 精度也未验证。不能将这次修复解释为全机内存访问已完整覆盖，或“日志里没有写入就一定安全”。
+
+所有合成 ROM 和虚拟卡的运行前后 SHA-256 均保持一致；未测试虚拟卡写操作。超时只验证宿主终止测试进程，不代表相机看门狗或断电恢复。相机端没有执行任何代码，固件 2.0.0 的启动和恢复仍未验证。
 
 ## 下一阶段
 

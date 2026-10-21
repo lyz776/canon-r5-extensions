@@ -30,10 +30,50 @@ index 9fa779e..981a39c 100644
  }
  
 diff --git a/hw/eos/dbi/logging.c b/hw/eos/dbi/logging.c
-index 2529d0e..e8d267b 100644
+index 2529d0e..1be4970 100644
 --- a/hw/eos/dbi/logging.c
 +++ b/hw/eos/dbi/logging.c
-@@ -1942,12 +1942,12 @@ void eos_logging_init(void)
+@@ -181,8 +181,6 @@ static void eos_romcpy_log_mem(MemoryRegion *mr, hwaddr _addr, uint64_t _value,
+ void eos_log_mem(hwaddr addr, uint64_t value, uint32_t size, int flags)
+ {
+     const char *msg = "";
+-    intptr_t msg_arg1 = 0;
+-    intptr_t msg_arg2 = 0;
+     int is_write = flags & 1;
+     int mode = is_write ? MODE_WRITE : MODE_READ;
+ 
+@@ -246,7 +244,7 @@ void eos_log_mem(hwaddr addr, uint64_t value, uint32_t size, int flags)
+             break;
+         case 2:
+             msg = "16-bit";
+-            value &= 0xFFFFF;
++            value &= 0xFFFF;
+             break;
+         case 4:
+             value &= 0xFFFFFFFF;
+@@ -255,19 +253,12 @@ void eos_log_mem(hwaddr addr, uint64_t value, uint32_t size, int flags)
+             assert(0);
+     }
+ 
+-    if (is_write)
+-    {
+-        /* log the old value as well */
+-        msg_arg2 = (intptr_t) msg;
+-        msg_arg1 = 0;
+-        msg = "was 0x%X; %s";
+-        cpu_physical_memory_read(addr, &msg_arg1, size);
+-    }
++    /* Do not reread memory: stores have completed, and MMIO reads may have side effects. */
+ 
+     /* all our memory region names start with eos. */
+     assert(!mr->name || strncmp(mr->name, "eos.", 4) == 0);
+     const char *name = (mr->name) ? mr->name + 4 : KLRED"UNMAPPED"KRESET;
+-    io_log(name, addr, mode, value, value, msg, msg_arg1, msg_arg2);
++    io_log(name, addr, mode, value, value, msg, 0, 0);
+ }
+ 
+ 
+@@ -1942,12 +1933,12 @@ void eos_logging_init(void)
      if (qemu_loglevel_mask(EOS_LOG_MEM))
      {
          int mem_access_mode =
@@ -64,10 +104,36 @@ index 9f1828b..121c610 100644
  void memory_set_access_logging_cb(
      void (*mem_log_cb)(hwaddr addr, uint64_t value, unsigned size, int is_write),
 diff --git a/target/arm/translate.c b/target/arm/translate.c
-index e4c0094..73326fa 100644
+index e4c0094..edc963c 100644
 --- a/target/arm/translate.c
 +++ b/target/arm/translate.c
-@@ -976,10 +976,10 @@ void memory_set_access_logging_cb(
+@@ -934,6 +934,9 @@ static inline TCGv gen_aa32_addr(DisasContext *s, TCGv_i32 a32, MemOp op)
+     return addr;
+ }
+ 
++static inline void gen_log_ldr(TCGv_i32 addr, TCGv_i32 val, int opc);
++static inline void gen_log_str(TCGv_i32 addr, TCGv_i32 val, int opc);
++
+ static void gen_aa32_ld_i32(DisasContext *s, TCGv_i32 val, TCGv_i32 a32,
+                             int index, MemOp opc)
+ {
+@@ -946,6 +949,7 @@ static void gen_aa32_ld_i32(DisasContext *s, TCGv_i32 val, TCGv_i32 a32,
+ 
+     addr = gen_aa32_addr(s, a32, opc);
+     tcg_gen_qemu_ld_i32(val, addr, index, opc);
++    gen_log_ldr(a32, val, opc);
+     tcg_temp_free(addr);
+ }
+ 
+@@ -961,6 +965,7 @@ static void gen_aa32_st_i32(DisasContext *s, TCGv_i32 val, TCGv_i32 a32,
+ 
+     addr = gen_aa32_addr(s, a32, opc);
+     tcg_gen_qemu_st_i32(val, addr, index, opc);
++    gen_log_str(a32, val, opc);
+     tcg_temp_free(addr);
+ }
+ 
+@@ -976,10 +981,10 @@ void memory_set_access_logging_cb(
      void (*mem_log_cb)(hwaddr addr, uint64_t value, unsigned size, int is_write),
      int access_mode)
  {
@@ -80,3 +146,28 @@ index e4c0094..73326fa 100644
          mem_log.write_cb = mem_log_cb;
      }
  }
+@@ -1016,7 +1021,7 @@ static inline void gen_log_ldr(TCGv_i32 addr, TCGv_i32 val, int opc)
+ 
+ static inline void gen_log_str(TCGv_i32 addr, TCGv_i32 val, int opc)
+ {
+-    /* called before the actual STR */
++    /* Log only after the store completes (a fault skips this callback). */
+     /* only compile the logging code if a CBR was registered */
+     if (mem_log.write_cb) {
+         TCGv_i32 opc_reg = tcg_temp_new_i32();
+@@ -1031,7 +1036,6 @@ static inline void gen_aa32_ld##SUFF(DisasContext *s, TCGv_i32 val,      \
+                                      TCGv_i32 a32, int index)            \
+ {                                                                        \
+     gen_aa32_ld_i32(s, val, a32, index, OPC | s->be_data);               \
+-    gen_log_ldr(a32, val, OPC);                                          \
+ }
+ 
+ #define DO_GEN_ST(SUFF, OPC)                                             \
+@@ -1039,7 +1043,6 @@ static inline void gen_aa32_st##SUFF(DisasContext *s, TCGv_i32 val,      \
+                                      TCGv_i32 a32, int index)            \
+ {                                                                        \
+     gen_aa32_st_i32(s, val, a32, index, OPC | s->be_data);               \
+-    gen_log_str(a32, val, OPC);                                          \
+ }
+ 
+ static inline void gen_aa32_frob64(DisasContext *s, TCGv_i64 val)
