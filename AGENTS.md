@@ -8,3 +8,4 @@
 - Before each delivery, run relevant tests and document possible bricking mechanisms, what was actually tested, and remaining unknowns. Host tests cannot certify camera safety.
 - Keep firmware images, dumps, serial numbers, credentials, and generated camera data out of this public repository. Inspect staged contents explicitly; ignore rules are not a complete safeguard.
 - No subagents, extra services, dependencies, or scaffolding unless needed for concrete work.
+- Bound each stage by a user-observable result, repeatable acceptance steps, and an explicit stopping condition. Do not substitute more research or UI polish for the missing firmware evidence.

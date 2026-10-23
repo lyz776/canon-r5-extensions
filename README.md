@@ -1,6 +1,6 @@
 # canon-r5-extensions
 
-佳能 EOS R5 一代的离线固件研究仓库，提供只读文件指纹工具、QEMU-EOS 构建补丁和合成测试。非 Canon 或 Magic Lantern 官方项目，不提供相机安装包。
+佳能 EOS R5 一代的离线固件研究仓库，提供只读文件指纹工具、QEMU-EOS 构建补丁和可操作演示。非 Canon 或 Magic Lantern 官方项目，不提供相机安装包。
 
 ## 使用
 
@@ -10,13 +10,13 @@
 python -B inspect_firmware.py "path/to/firmware.FIR"
 ```
 
-按 [QEMU 构建说明](QEMU.md)准备模拟器，再运行合成测试：
+按 [QEMU 构建说明](QEMU.md)准备模拟器，启动可单步、断点、暂停的窗口：
 
 ```sh
-python -B qemu/smoke_r5.py "path/to/qemu-system-arm.exe" --work-dir ./local/qemu-smoke
+python -B qemu/demo.py "path/to/qemu-system-arm.exe"
 ```
 
-构建依赖、详细测试结果见 [QEMU.md](QEMU.md)，源码调查见 [RESEARCH.md](RESEARCH.md)。
+操作与验收见 [DEMO.md](DEMO.md)，构建和合成回归见 [QEMU.md](QEMU.md)，源码调查见 [RESEARCH.md](RESEARCH.md)。
 
 ## 风险提示
 
